@@ -18,6 +18,7 @@ class Client:
 
         # variable setup: --
         self.__address = address
+        self.__users = []
 
         # start receive in the new thread: --
         threading.Thread(target=self.receive).start()
@@ -25,11 +26,23 @@ class Client:
     def get_response(self) -> dict:
         return json.loads(self.client.recv(1024).decode('UTF-8'))
 
+    def __send(self, data: dict) -> None:
+        self.client.send(bytes(json.dumps(data), "utf-8"))
+
+    # def change_name(self, __name: str) -> None:
+
     def receive(self) -> Never:
         while True:
             try:
+                self.__send({
+                    "request": "get_users"
+                })
+
                 received = self.get_response()
                 print(received)
+
+                if received["response"] == "get_users":
+                    self.__users = received["users"]
 
             except (ConnectionResetError, OSError):
                 ClientNotifier.disconnection_notify(self.__address, "Server has broken the connection")

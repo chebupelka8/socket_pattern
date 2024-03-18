@@ -6,7 +6,17 @@ import threading
 from typing import Tuple, Never
 from notify import ServerNotifier
 
+from dataclasses import dataclass
+
 HOST, PORT = 'localhost', 5050
+
+
+@dataclass
+class User:
+    id: int
+    address: Tuple[str, int]
+    sock: socket.socket
+    name: str
 
 
 class Server:
@@ -19,7 +29,8 @@ class Server:
 
         # variables setup: --
         self.__is_working = True
-        self.__clients = []
+        self.__clients: list[socket.socket] = []
+        self.__users: list[User] = []
 
     def listen(self) -> Never:
         ServerNotifier.listening_server()
@@ -32,21 +43,49 @@ class Server:
 
             threading.Thread(target=self.handle_client, args=(client, address)).start()  # start handle client
 
-    def __disconnect_client(self, address: Tuple[str, int], client) -> None:
+    def __disconnect_client(self, address: Tuple[str, int], client, user) -> None:
         ServerNotifier.notify_disconnected(address)
         self.__clients.remove(client)
+        self.__users.remove(user)
+
+    def __send(self, data: dict, client: socket.socket) -> None:
+        client.send(bytes(json.dumps(data), "utf-8"))
+
+    def __get_users_data(self) -> list[dict]:
+        result = []
+
+        for user in self.__users:
+            result.append({
+                "id": user.id,
+                "address": user.address,
+                "name": user.name
+            })
+
+        return result
 
     def handle_client(self, client: socket.socket, address: Tuple[str, int]) -> None:
+        user = User(len(self.__clients), address, client, "hello"[:len(self.__clients)])
+        self.__users.append(user)
+
         while True:
             try:
-                data = json.loads(client.recv(1024).decode('utf-8'))
+                recv = client.recv(1024)
 
-                if not data:  # if client disconnect
-                    self.__disconnect_client(address, client)
+                if not recv:  # if client disconnect
+                    self.__disconnect_client(address, client, user)
                     break
 
+                data = json.loads(client.recv(1024).decode('utf-8'))
+                print("i")
+
+                if data["request"] == "get_users":
+                    self.__send({
+                        "response": "get_users",
+                        "users": self.__get_users_data()
+                    }, client)
+
             except (ConnectionResetError, OSError):
-                self.__disconnect_client(address, client)
+                self.__disconnect_client(address, client, user)
                 break
 
 
